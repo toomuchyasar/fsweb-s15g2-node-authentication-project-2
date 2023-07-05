@@ -1,23 +1,26 @@
 const router = require("express").Router();
+const User = require('..//users/users-model')
+const jwt = require('jsonwebtoken')
+const bcrypt = require('bcryptjs')
 const { usernameVarmi, rolAdiGecerlimi } = require('./auth-middleware');
-const { JWT_SECRET } = require("../secrets"); // bu secret'ı kullanın!
+const { JWT_SECRET, HASH_ROUND } = require("../secrets"); // bu secret'ı kullanın!
 
-router.post("/register", rolAdiGecerlimi, (req, res, next) => {
-  /**
-    [POST] /api/auth/register { "username": "anna", "password": "1234", "role_name": "angel" }
+router.post("/register", rolAdiGecerlimi, async (req, res, next) => {
 
-    response:
-    status: 201
-    {
-      "user"_id: 3,
-      "username": "anna",
-      "role_name": "angel"
+    const {username, password} = req.body
+
+    try {
+      const hashedPassword = bcrypt.hashSync(password , HASH_ROUND)
+      await User.ekle({username: username, password: hashedPassword, role_name: req.role_name});
+      res.status(201).json(user);
+    } catch (error) {
+      next(error)
     }
-   */
+
 });
 
 
-router.post("/login", usernameVarmi, (req, res, next) => {
+router.post("/login", usernameVarmi, async (req, res, next) => {
   /**
     [POST] /api/auth/login { "username": "sue", "password": "1234" }
 
@@ -36,6 +39,23 @@ router.post("/login", usernameVarmi, (req, res, next) => {
       "role_name": "admin" // giriş yapan kulanıcının role adı
     }
    */
+  const { username, password } = req.body;
+  const [user] = await User.goreBul({ username: username });
+  if (user && bcrypt.compareSync(password, user.password)) {
+    const payload = {
+      subject: user.user_id,
+      username: user.username,
+      role_name: user.role_name
+    }
+    const options = {
+      expiresIn: '24h'
+    }
+
+    const token = jwt.sign(payload, JWT_SECRET, options);
+    res.json({ message: `${user.username} geri geldi!`, token: token })
+  } else {
+    next({ status: 401, message: 'Gecersiz kriter' })
+  }
 });
 
 module.exports = router;
